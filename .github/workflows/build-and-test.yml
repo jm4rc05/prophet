@@ -12,8 +12,13 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        python-version: ["3.8"]
-        os: ["macos-latest", "ubuntu-latest", "windows-latest"]
+        python-version: ["3.12"]
+        os:
+          - macos-14-large # Intel
+          - macos-14-xlarge # ARM64
+          - ubuntu-24.04 # Intel
+          - ubuntu-24.04-arm # ARM64
+          - windows-latest
       fail-fast: false
 
     steps:
@@ -24,9 +29,9 @@ jobs:
         (Get-ItemProperty "HKLM:System\CurrentControlSet\Control\FileSystem").LongPathsEnabled
         $os_version = (Get-CimInstance Win32_OperatingSystem).version
         Echo "OS_VERSION=$os_version" >> $env:GITHUB_ENV
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python-version }}
         cache: pip
@@ -34,7 +39,7 @@ jobs:
     - name: "Restore RTools40"
       if: startsWith(runner.os, 'Windows')
       id: cache-rtools
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: C:/rtools40
         key: ${{ runner.os }}-${{ env.OS_VERSION }}-rtools-v1
@@ -44,57 +49,72 @@ jobs:
         python -m pip install -U --editable ".[dev,parallel]"
         python -m pytest prophet/tests/
 
+  typecheck-python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          activate-environment: true
+
+      - name: Install
+        run: cd python && uv pip install ".[dev,parallel]"
+
+      - name: Typecheck with pyrefly
+        run: cd python && pyrefly check --output-format=github
+
   build-and-test-r:
 
     runs-on: ${{ matrix.config.os }}
+    name: R ${{ matrix.config.os }} (${{ matrix.config.r }})
     strategy:
       matrix:
         config:
-          - {os: ubuntu-20.04, r: 'release', rspm: "https://packagemanager.rstudio.com/cran/__linux__/focal/latest"}
+          - {os: ubuntu-22.04, r: 'release'}
       fail-fast: false
 
     env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      R_KEEP_PKG_SOURCE: yes
       R_REMOTES_NO_ERRORS_FROM_WARNINGS: true
-      RSPM: ${{ matrix.config.rspm }}
+      PKGDIR: "R/"
 
     steps:
-    - uses: actions/checkout@v3
-    - uses: r-lib/actions/setup-pandoc@v2
-    - name: Set up R
-      uses: r-lib/actions/setup-r@v2
-      with:
-        r-version: ${{ matrix.config.r }}
-    - name: Install remotes
-      run: |
-        install.packages('remotes')
-      shell: Rscript {0}
-    - name: Query dependencies
-      run: |
-        saveRDS(remotes::dev_package_deps(pkgdir = "R/", dependencies = TRUE), ".github/depends.Rds", version = 2)
-        writeLines(sprintf("R-%i.%i", getRversion()$major, getRversion()$minor), ".github/R-version")
-      shell: Rscript {0}
-    - name: Restore R package cache
-      if: runner.os != 'Windows'
-      uses: actions/cache@v3
-      with:
-        path: ${{ env.R_LIBS_USER }}
-        key: ${{ runner.os }}-${{ hashFiles('.github/R-version') }}-1-${{ hashFiles('.github/depends.Rds') }}
-        restore-keys: ${{ runner.os }}-${{ hashFiles('.github/R-version') }}-1-
-    - name: Install system dependencies
-      if: runner.os == 'Linux'
-      run: |
-        while read -r cmd
-        do
-          eval sudo $cmd
-        done < <(Rscript -e 'writeLines(remotes::system_requirements(os = "ubuntu", os_release = "20.04", path = "R/"))')
-    - name: Install dependencies
-      run: |
-        remotes::install_deps(pkgdir = "R/", dependencies = NA)
-        remotes::install_cran(c("rcmdcheck", "knitr", "testthat", "readr", "rmarkdown"))
-        install.packages(c("cmdstanr", "posterior"), repos = c("https://mc-stan.org/r-packages/", getOption("repos")))
-      shell: Rscript {0}
-    - name: Check
-      uses: r-lib/actions/check-r-package@v2
-      with:
-        working-directory: "R/"
-        upload-snapshots: true
+      - uses: actions/checkout@v4
+
+      - uses: r-lib/actions/setup-pandoc@v2
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: ${{ matrix.config.r }}
+          use-public-rspm: true
+
+      # Install dependencies - separating the steps to fix dependency conflicts
+      - name: Install dependencies
+        run: |
+          install.packages('remotes')
+          remotes::install_deps(dependencies = TRUE)
+          remotes::install_cran(c("rcmdcheck", "knitr", "testthat", "readr", "rmarkdown"))
+        shell: Rscript {0}
+        working-directory: ${{ env.PKGDIR }}
+
+      # Install Stan packages separately if needed
+      - name: Install Stan packages
+        run: |
+          install.packages(c("cmdstanr", "posterior"), repos = c("https://stan-dev.r-universe.dev", getOption("repos")))
+        shell: Rscript {0}
+
+      - name: Check
+        uses: r-lib/actions/check-r-package@v2
+        with:
+          upload-snapshots: true
+          build_args: 'c("--no-manual","--compact-vignettes=gs+qpdf")'
+          working-directory: ${{ env.PKGDIR }}
+
+      - name: Upload package source
+        if: always() # Upload even if the check step fails
+        uses: actions/upload-artifact@v4
+        with:
+          name: r-source-package
+          path: "**/*.tar.gz"

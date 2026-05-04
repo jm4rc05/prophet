@@ -1,3 +1,4 @@
+
 # Prophet: Automatic Forecasting Procedure
 
 ![Build](https://github.com/facebook/prophet/workflows/Build/badge.svg)
@@ -61,7 +62,7 @@ follow these instructions to use `cmdstanr` instead of `rstan` as the backend:
 ```r
 # R
 # We recommend running this in a fresh R session or restarting your current session
-install.packages(c("cmdstanr", "posterior"), repos = c("https://mc-stan.org/r-packages/", getOption("repos")))
+install.packages(c("cmdstanr", "posterior"), repos = c("https://stan-dev.r-universe.dev", getOption("repos")))
 
 # If you haven't installed cmdstan before, run:
 cmdstanr::install_cmdstan()
@@ -125,6 +126,81 @@ Make sure compilers (gcc, g++, build-essential) and Python development tools (py
 Using `cmdstanpy` with Windows requires a Unix-compatible C compiler such as mingw-gcc. If cmdstanpy is installed first, one can be installed via the `cmdstanpy.install_cxx_toolchain` command.
 
 ## Changelog
+
+See [Release Notes](https://github.com/facebook/prophet/releases).
+
+### Version 1.3.0 (2026.01.27)
+
+#### Python
+
+- Support pandas>=3.0 and numpy>=2.4.
+
+### Version 1.2.2 (2026.01.25)
+
+#### Python
+
+- Version constraints on pandas (`<3`) and numpy (`<2.4`).
+
+#### R
+- Update build requirements to C++17 to Comply with CRAN Policy.
+- Add .tar.gz upload for R package to CI.
+- Re-generated holidays.csv for R package.
+
+### Version 1.2.1 (2025.10.22)
+
+#### Python
+
+- Also copy makefile to fake cmdstan.
+
+### Version 1.2.0 (2025.05.30)
+
+#### Python
+
+- Use latest CmdStan.
+- Add null check to CmdStanPyBackend cleanup() function.
+
+### Version 1.1.7 (2025.05.30)
+
+#### Python
+
+- Enable creation of custom performance metrics.
+- chore: address pandas futurewarning from "M" being deprecated.
+- cleanup() for cross_validate.
+
+### Version 1.1.6 (2024.09.29)
+
+#### Python
+
+- Bug fixes: include predictions for dates with missing `y` the history, zero division error in cross validation metrics.
+- Changed `NDArray[np.float_]` to `NDArray[np.float64]` to be compatible with numpy 2.0
+
+#### R
+
+- Updated `holidays` data based on holidays version 0.57.
+
+### Version 1.1.5 (2023.10.10)
+
+#### Python
+
+- Upgraded cmdstan version to 2.33.1, enabling Apple M2 support.
+- Added pre-built wheels for macOS arm64 architecture (M1, M2 chips)
+- Added argument `scaling` to the `Prophet()` instantiation. Allows `minmax` scaling on `y` instead of
+  `absmax` scaling (dividing by the maximum value). `scaling='absmax'` by default, preserving the
+  behaviour of previous versions.
+- Added argument `holidays_mode` to the `Prophet()` instantiation. Allows holidays regressors to have
+  a different mode than seasonality regressors. `holidays_mode` takes the same value as `seasonality_mode`
+  if not specified, preserving the behaviour of previous versions.
+- Added two methods to the `Prophet` object: `preprocess()` and `calculate_initial_params()`. These
+  do not need to be called and will not change the model fitting process. Their purpose is to provide
+  clarity on the pre-processing steps taken (`y` scaling, creating fourier series, regressor scaling,
+  setting changepoints, etc.) before the data is passed to the stan model.
+- Added argument `extra_output_columns` to `cross_validation()`. The user can specify additional columns
+  from `predict()` to include in the final output alongside `ds` and `yhat`, for example `extra_output_columns=['trend']`.
+- prophet's custom `hdays` module was deprecated last version and is now removed.
+
+#### R
+
+- Updated `holidays` data based on holidays version 0.34.
 
 ### Version 1.1.4 (2023.05.30)
 
